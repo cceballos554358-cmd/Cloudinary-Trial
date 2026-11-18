@@ -9,6 +9,7 @@ class CrudService {
     return items.add({
       'name': name,
       'quantity': quantity,
+      'isFavorite': false,
       'createdAt': Timestamp.now(),
     });
   }
@@ -23,6 +24,13 @@ class CrudService {
     return items.doc(id).update({
       'name': name,
       'quantity': quantity,
+    });
+  }
+
+  // TOGGLE FAVORITE
+  Future<void> toggleFavorite(String id, bool currentStatus) {
+    return items.doc(id).update({
+      'isFavorite': !currentStatus,
     });
   }
 

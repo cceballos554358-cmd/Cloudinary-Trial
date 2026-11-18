@@ -4,12 +4,25 @@ import 'auth_service.dart';
 import 'crud_service.dart';
 import 'login_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
   final CrudService service = CrudService();
   final TextEditingController nameCtrl = TextEditingController();
   final TextEditingController qtyCtrl = TextEditingController();
+  bool showOnlyFavorites = false;
 
-  HomePage({super.key});
+  @override
+  void dispose() {
+    nameCtrl.dispose();
+    qtyCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,6 +33,18 @@ class HomePage extends StatelessWidget {
         centerTitle: true,
         backgroundColor: Colors.teal,
         actions: [
+          IconButton(
+            icon: Icon(
+              showOnlyFavorites ? Icons.favorite : Icons.favorite_border,
+              color: showOnlyFavorites ? Colors.redAccent : Colors.white,
+            ),
+            tooltip: showOnlyFavorites ? 'Show All' : 'Filter Favorites',
+            onPressed: () {
+              setState(() {
+                showOnlyFavorites = !showOnlyFavorites;
+              });
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
@@ -37,63 +62,128 @@ class HomePage extends StatelessWidget {
         child: const Icon(Icons.add, color: Colors.white),
         onPressed: () => openAddDialog(context),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: service.getItems(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final docs = snapshot.data!.docs;
-          if (docs.isEmpty) {
-            return const Center(
-              child: Text("No items found", style: TextStyle(fontSize: 18)),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(8),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              var item = docs[index];
-              return Card(
-                elevation: 3,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+      body: Column(
+        children: [
+          // Filter Chips Bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('All Items'),
+                  selected: !showOnlyFavorites,
+                  onSelected: (selected) {
+                    if (selected) {
+                      setState(() => showOnlyFavorites = false);
+                    }
+                  },
                 ),
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  avatar: Icon(
+                    Icons.favorite,
+                    size: 16,
+                    color: showOnlyFavorites ? Colors.red : Colors.grey,
                   ),
-                  title: Text(
-                    item['name'],
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                  label: const Text('Favorites'),
+                  selected: showOnlyFavorites,
+                  selectedColor: Colors.teal.withAlpha(50),
+                  onSelected: (selected) {
+                    setState(() => showOnlyFavorites = selected);
+                  },
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: service.getItems(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final allDocs = snapshot.data!.docs;
+                final docs = allDocs.where((doc) {
+                  if (!showOnlyFavorites) return true;
+                  final data = doc.data() as Map<String, dynamic>?;
+                  return data != null && data['isFavorite'] == true;
+                }).toList();
+
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Text(
+                      showOnlyFavorites
+                          ? "No favorite items found"
+                          : "No items found",
+                      style: const TextStyle(fontSize: 18),
                     ),
-                  ),
-                  subtitle: Text(
-                    "Quantity ${item['quantity']}",
-                    style: const TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.orange),
-                        onPressed: () => openEditDialog(context, item),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.all(8),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    var item = docs[index];
+                    final data = item.data() as Map<String, dynamic>?;
+                    final bool isFav = data?['isFavorite'] == true;
+
+                    return Card(
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _confirmDelete(context, item.id),
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        title: Text(
+                          item['name'],
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Text(
+                          "Quantity ${item['quantity']}",
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                isFav ? Icons.favorite : Icons.favorite_border,
+                                color: isFav ? Colors.red : Colors.grey,
+                              ),
+                              tooltip: isFav
+                                  ? 'Remove from Favorites'
+                                  : 'Add to Favorites',
+                              onPressed: () =>
+                                  service.toggleFavorite(item.id, isFav),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.orange),
+                              onPressed: () => openEditDialog(context, item),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => _confirmDelete(context, item.id),
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
